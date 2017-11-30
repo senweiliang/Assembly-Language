@@ -1,0 +1,120 @@
+STACK SEGMENT
+    DB 16 DUP(1)
+STACK ENDS
+
+DATA SEGMENT
+SUM  DB 512 DUP(0)
+SUM_END DB '$'
+BUF1 DB 256;最大256位数相乘
+     DB ?
+     DB 256 DUP(0)
+BUF2 DB 256
+     DB ?
+     DB 256 DUP(0)
+BUF2_INDEX DB ?
+DIV_NUM DB 10
+SUM_START DW ?
+PLUS_OFFSET DW ?
+DATA ENDS
+
+CODE SEGMENT
+    ASSUME CS:CODE,DS:DATA,SS:STACK
+MAIN PROC FAR
+    MOV AX,DATA
+    MOV DS,AX
+    MOV AX,STACK
+    MOV SS,AX
+    MOV SP,16
+    MOV SI,512
+    
+    
+    LEA DX,BUF1
+    MOV AH,0AH
+    INT 21H
+    
+    LEA DX,BUF2
+    MOV AH,0AH
+    INT 21H
+
+    MOV AL,BUF1+1
+    XOR AH,AH
+    MOV PLUS_OFFSET,AX
+
+    ;判断两个数字是否为零
+    MOV CL,BUF2+1
+    XOR CH,CH
+
+    SUB SI,PLUS_OFFSET;抵消第一次偏移    
+
+LP_BUF2:
+    ;调整指针到正确位置
+    ADD SI,PLUS_OFFSET
+    
+    ;确定BUF2索引 因为已经POP 此时的CX为LP_BUF2循环的计数变量
+    MOV AX,CX
+    INC AL;位数不会超过256 所以AH实际为0
+    MOV BUF2_INDEX,AL
+
+    PUSH CX;LP_BUF2循环的计数变量暂存在堆栈中
+    MOV CL,BUF1+1
+    XOR CH,CH
+    XOR DX,DX;乘法加法进位清零 DL乘法进位 DH加法进位
+    
+LP_BUF1:
+    ;得到BUF1字符内容
+    MOV BX,CX
+    MOV AL,BUF1[BX+1];AL内容为数字字符 BX才能作为基址
+    SUB AL,30H;
+
+    ;得到BUF2字符内容
+    MOV BL,BUF2_INDEX
+    XOR BH,BH
+    MOV BL,BUF2[BX]
+    SUB BL,30H
+
+    MUL BL;乘完结果在AX 因为最大结果51H(81) AH一定为0 AX作为被除数
+    ADD AL,DL;加上前一位乘法的进位
+    DIV DIV_NUM;AX得到个位和十位数字
+    MOV DL,AL;保存乘法进位
+
+    DEC SI
+    MOV BH,SUM[SI]
+    ADD AH,BH
+    ADD AH,DH;加上前一位的加法进位
+    MOV AL,AH
+    XOR AH,AH;AX作为被除数
+    DIV DIV_NUM
+    MOV DH,AL;保存加法进位
+    MOV SUM[SI],AH
+
+    LOOP LP_BUF1
+    DEC SI
+    ADD DL,DH;加法进位加上乘法进位
+    MOV SUM[SI],DL;把最后一个位存入 可能为0
+    POP CX;恢复外层循环计数
+
+    LOOP LP_BUF2 
+    ;把存储的数字转为数字字符
+    MOV SUM_START,SI;先保存字符串开头地址
+NUM_TO_CHAR:
+    MOV AL,SUM[SI]
+    ADD AL,30H
+    MOV SUM[SI],AL
+    INC SI
+    CMP SI,512
+    JL NUM_TO_CHAR;不能等于
+
+   
+    ;输出字符串
+    MOV SI,SUM_START
+    MOV DX,SI
+    MOV AH,9
+    INT 21H
+
+
+
+    MOV AX,4C00H
+    INT 21H
+MAIN ENDP
+CODE ENDS
+    END MAIN
